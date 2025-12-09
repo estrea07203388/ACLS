@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>講師時數表 (講師查詢)</title>
+    <style>
+        /* --- CSS (與前版大致相同) --- */
+         @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            flex-direction: column; /* Allow stacking container and button */
+            justify-content: flex-start; /* Align container to top */
+            align-items: center; /* Center items horizontally */
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e0f2f7, #fafafa);
+            box-sizing: border-box; /* Include padding in height calculation */
+        }
+        .container {
+            width: 100%;
+            max-width: 600px; /* Smaller container for query page */
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            animation: fadeIn 0.6s ease-out;
+            margin-top: 30px;
+            margin-bottom: 20px; /* Add margin below container */
+             position: relative; /* For loading overlay */
+        }
+          /* Loading Overlay Styles (Simplified for Frontend) */
+        #loading-overlay-front {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8); /* Lighter overlay */
+            display: flex; /* Initially hidden, shown by JS */
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+            border-radius: 10px;
+            color: #666;
+            font-size: 1.1em;
+            text-align: center;
+            opacity: 0; /* Hidden by default */
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+         #loading-overlay-front.visible {
+             opacity: 1;
+             visibility: visible;
+        }
+        .spinner-small {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: #007bff;
+            animation: spin 1s ease infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        h1 {
+            color: #0056b3;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.8em;
+        }
+        .search-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+        #searchInput {
+            flex-grow: 1;
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #searchButton {
+            padding: 12px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            white-space: nowrap; /* Prevent button text wrapping */
+        }
+         #searchButton:disabled {
+             background-color: #cccccc;
+             cursor: not-allowed;
+         }
+        #searchButton:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        #results {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            min-height: 100px; /* Reserve some space */
+        }
+        .result-item {
+             background-color: #f9f9f9;
+             padding: 15px;
+             border-radius: 8px;
+             margin-bottom: 15px;
+             border: 1px solid #eee;
+             animation: fadeIn 0.4s ease-out;
+        }
+        .result-item h2 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+        }
+        .result-item p {
+            margin: 5px 0;
+            font-size: 1.1em;
+            color: #555;
+        }
+        .result-item strong {
+             color: #0056b3;
+        }
+
+        #errorMessage {
+            color: #c9302c;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+        }
+         #initial-message {
+             text-align: center;
+             color: #888;
+         }
+        .medal {
+             margin-left: 10px;
+             font-size: 1.3em;
+             vertical-align: middle;
+        }
+        .status-expired { color: #d9534f; font-weight: bold; }
+        .status-expiring-soon { color: #f0ad4e; font-weight: bold; }
+        .status-manual-highlight { color: #f0ad4e; font-weight: bold; }
+
+         /* Admin Link Button Style - REMOVED */
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+         <div id="loading-overlay-front">
+             <div class="spinner-small"></div>
+             正在載入資料...
+         </div>
+        <h1>講師時數表</h1>
+        <div class="search-area">
+            <input type="text" id="searchInput" placeholder="請輸入您的教師姓名或ID...">
+            <button id="searchButton">查詢</button>
+        </div>
+        <div id="results">
+             <p id="initial-message">請輸入姓名或ID以查詢您的教學積分與證書效期。</p>
+        </div>
+    </div>
+
+    <!-- Admin Link Button - REMOVED -->
+
+
+    <script>
+    // --- JavaScript ---
+
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycby3yFoQDJ9LMNxHOu9tJ3ySMFDcp5zgbgnUySIdaA_Fjkkuq5nJzcgG2BsENOmrRsWI/exec';
+
+    let allInstructorData = [];
+    let topThreeIdsForMedals = [];
+    let isDataLoaded = false;
+
+    // Helper functions
+     const convertToAD = (rocDateStr) => {
+        if (!rocDateStr || !rocDateStr.includes('.')) return null;
+        const parts = rocDateStr.split('.').map(Number);
+        if (parts.length !== 3) return null;
+        if (parts[0] < 90 || parts[1] < 1 || parts[1] > 12 || parts[2] < 1 || parts[2] > 31) {
+            console.warn(`Invalid ROC date format detected: ${rocDateStr}`); return null;
+        }
+        try { return new Date(parts[0] + 1911, parts[1] - 1, parts[2]); }
+        catch (e) { console.error(`Error converting ROC date: ${rocDateStr}`, e); return null; }
+    };
+     const getCertStatus = (certDateStr) => {
+        if (!certDateStr || !certDateStr.includes('-') || certDateStr.toLowerCase() === '無紀錄') { return { status: '', endDate: null }; }
+        const dateParts = certDateStr.split('-');
+        if (dateParts.length !== 2) return { status: '', endDate: null };
+        const endDateStr = dateParts[1].trim();
+        const endDate = convertToAD(endDateStr);
+        if (!endDate || isNaN(endDate.getTime())) { console.warn(`Could not parse end date from: ${certDateStr}`); return { status: '', endDate: null }; }
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const oneYearFromNow = new Date(today); oneYearFromNow.setFullYear(today.getFullYear() + 1);
+        let status = '';
+        const endDateTime = new Date(endDate); endDateTime.setHours(0,0,0,0);
+        if (endDateTime < today) { status = 'status-expired'; }
+        else if (endDateTime <= oneYearFromNow) { status = 'status-expiring-soon'; }
+         if (certDateStr.includes('113.11.10-115.11.09') || certDateStr.includes('114.05.13-116.05.12')) {
+            status = `${status} status-manual-highlight`.trim();
+        }
+        return { status, endDate: endDateTime };
+    };
+
+
+    // --- Data Fetching ---
+    async function fetchDataAndPrepare() {
+        const loadingOverlay = document.getElementById('loading-overlay-front');
+        const searchButton = document.getElementById('searchButton');
+        const initialMessage = document.getElementById('initial-message');
+        const resultsDiv = document.getElementById('results');
+
+        loadingOverlay.classList.add('visible');
+        searchButton.disabled = true;
+         if (initialMessage) {
+             initialMessage.style.display = 'none';
+         }
+        const dynamicContent = resultsDiv.querySelector('.dynamic-results');
+        if(dynamicContent) resultsDiv.removeChild(dynamicContent);
+        const errorMessage = resultsDiv.querySelector('#errorMessage');
+        if(errorMessage) resultsDiv.removeChild(errorMessage);
+
+
+        try {
+            const response = await fetch(GAS_URL);
+             if (!response.ok) { let errorMsg = `無法讀取資料 (HTTP ${response.status})`; try { const errorJson = await response.json(); if (errorJson && errorJson.error) errorMsg = errorJson.error; } catch (e) {} throw new Error(errorMsg); }
+            const result = await response.json();
+            if (result.error) { throw new Error(result.error); }
+            if (!result.data || !Array.isArray(result.data)) { throw new Error("從伺服器收到的資料格式不正確。"); }
+
+            allInstructorData = result.data.map(teacher => {
+                 if (teacher.TeacherID === undefined || teacher.TeacherName === undefined) { console.warn("Missing ID or Name:", teacher); return null; }
+                 const { status, endDate } = getCertStatus(teacher.CertDate);
+                 let finalStatus = status;
+                 if (teacher.TeacherID === 1218 || teacher.TeacherID === 385) {
+                     finalStatus = `${status} status-manual-highlight`.trim();
+                 }
+                  return { ...teacher, TotalHours: teacher.Hours, certStatus: finalStatus, certEndDate: endDate };
+              }).filter(item => item !== null);
+
+            const sortedByHoursAll = [...allInstructorData].sort((a, b) => (b.TotalHours || 0) - (a.TotalHours || 0));
+            topThreeIdsForMedals = sortedByHoursAll.slice(0, 3).map(t => t.TeacherID);
+
+            isDataLoaded = true;
+            console.log("講師資料載入完成。");
+             if (initialMessage && !resultsDiv.querySelector('.dynamic-results') && !resultsDiv.querySelector('#errorMessage')) {
+                 initialMessage.style.display = 'block';
+             }
+
+
+        } catch (error) {
+            console.error('載入資料失敗:', error);
+            let displayError = `無法載入講師資料，請稍後再試或聯繫管理員。<br><small>${error.message}</small>`;
+            if (error.message && error.message.includes("缺少必要的英文欄位標題")) {
+                 displayError = `系統設定錯誤，無法載入資料。請聯繫管理員檢查 Google Sheet 標題列是否包含 TeacherID, TeacherName, Title, CertDate, Hours。`;
+            } else if (error.message && error.message.includes("找不到")) {
+                 displayError = `系統設定錯誤，找不到指定的資料來源工作表。請聯繫管理員。`;
+            }
+             if(initialMessage) initialMessage.style.display = 'none';
+            resultsDiv.innerHTML = `<p id="errorMessage">${displayError}</p>`;
+
+        } finally {
+            loadingOverlay.classList.remove('visible');
+            searchButton.disabled = false;
+        }
+    }
+
+    // --- Search and Display Function ---
+    function performSearch() {
+        const query = document.getElementById('searchInput').value.trim().toLowerCase();
+        const resultsDiv = document.getElementById('results');
+
+        let dynamicContentContainer = resultsDiv.querySelector('.dynamic-results');
+        if (dynamicContentContainer) { resultsDiv.removeChild(dynamicContentContainer); }
+        const errorMessageEl = resultsDiv.querySelector('#errorMessage');
+        if (errorMessageEl) { resultsDiv.removeChild(errorMessageEl); }
+
+        let initialMessage = document.getElementById('initial-message');
+        if (!initialMessage) {
+            initialMessage = document.createElement('p');
+            initialMessage.id = 'initial-message';
+            initialMessage.style.textAlign = 'center';
+            initialMessage.style.color = '#888';
+            initialMessage.textContent = '請輸入姓名或ID以查詢您的教學積分與證書效期。';
+            resultsDiv.insertBefore(initialMessage, resultsDiv.firstChild);
+        }
+
+        if (query === "") { initialMessage.style.display = 'block'; return; }
+        initialMessage.style.display = 'none';
+
+        if (!isDataLoaded) { resultsDiv.innerHTML = `<p id="errorMessage">資料仍在載入中，請稍候...</p>`; if(initialMessage) initialMessage.style.display = 'none'; return; }
+        if (allInstructorData.length === 0) { resultsDiv.innerHTML = `<p id="errorMessage">目前沒有講師資料可供查詢。</p>`; if(initialMessage) initialMessage.style.display = 'none'; return; }
+
+        const foundInstructors = allInstructorData.filter(instructor => (instructor.TeacherName && instructor.TeacherName.toLowerCase().includes(query)) || (instructor.TeacherID && String(instructor.TeacherID) === query) );
+
+         dynamicContentContainer = document.createElement('div');
+         dynamicContentContainer.className = 'dynamic-results';
+
+        if (foundInstructors.length === 0) {
+            dynamicContentContainer.innerHTML = `<p id="errorMessage">查無符合「${query}」的講師資料，請確認輸入是否正確。</p>`;
+        } else {
+            let resultsHtml = '';
+            foundInstructors.forEach(instructor => {
+                let medal = ''; const rank = topThreeIdsForMedals.indexOf(instructor.TeacherID);
+                 if (instructor.TotalHours > 0 && rank !== -1) { if (rank === 0) medal = `<span class="medal" title="積分第一名">🥇</span>`; else if (rank === 1) medal = `<span class="medal" title="積分第二名">🥈</span>`; else if (rank === 2) medal = `<span class="medal" title="積分第三名">🥉</span>`; }
+                 const safeName = (instructor.TeacherName || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                 const safeTitle = (instructor.Title || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                 const safeCertDate = (instructor.CertDate || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                 resultsHtml += `<div class="result-item"> <h2>${safeName} ${medal}</h2> <p>教師 ID: <strong>${instructor.TeacherID}</strong></p> <p>職稱: <strong>${safeTitle}</strong></p> <p>教學積分: <strong>${instructor.TotalHours || 0}</strong></p> <p>證書效期: <strong class="${instructor.certStatus || ''}">${safeCertDate}</strong></p> </div>`;
+            });
+             dynamicContentContainer.innerHTML = resultsHtml;
+        }
+         resultsDiv.appendChild(dynamicContentContainer);
+    }
+
+    // --- Event Listeners ---
+    document.getElementById('searchButton').addEventListener('click', performSearch);
+    document.getElementById('searchInput').addEventListener('keyup', function(event) { if (event.key === 'Enter') { performSearch(); } });
+
+    // --- Initial Load ---
+    window.onload = fetchDataAndPrepare;
+
+    </script>
+
+</body>
+</html>
